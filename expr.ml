@@ -90,8 +90,38 @@ let subst (var_name : varid) (repl : expr) (exp : expr) : expr =
    
 (* exp_to_concrete_string exp -- Returns a string representation of
    the concrete syntax of the expression `exp` *)
-let exp_to_concrete_string (exp : expr) : string =
-  failwith "exp_to_concrete_string not implemented" ;;
+
+
+let binop_to_string (b: binop) = 
+  match b with 
+  | Plus -> "+"
+  | Minus -> "-"
+  | Times -> "*"
+  | Equals -> "=+"
+  | LessThan -> "<"
+
+let rec exp_to_concrete_string (exp : expr) : string =
+  match exp with 
+  | Var v -> v                       
+  | Num num -> string_of_int num                           
+  | Bool b -> Bool.to_string b                       
+  | Unop (u, e) -> "-" ^ exp_to_concrete_string e                   
+  | Binop (b, e1, e2) -> (exp_to_concrete_string e1) ^ 
+                          (binop_to_string b) ^ 
+                          (exp_to_concrete_string e2)     
+  | Conditional (e1, e2, e3) -> "if " ^ (exp_to_concrete_string e1) ^ 
+                                "then " ^ (exp_to_concrete_string e2) ^ 
+                                "else" ^ (exp_to_concrete_string e3)
+  | Fun (var, e) -> "fun " ^ var ^ "-> " ^ exp_to_concrete_string e                 
+  | Let (var, e1, e2) -> "let " ^ var ^ " = " ^ (exp_to_concrete_string e1) ^ 
+                         " in " ^ (exp_to_concrete_string e2)
+  | Letrec (var, e1, e2) -> "let rec " ^ var ^ " = " ^ 
+                              (exp_to_concrete_string e1) ^ 
+                              " in " ^ (exp_to_concrete_string e2)
+  | Raise -> "Raise Exception" 
+  | Unassigned -> "Unassigned"                          
+  | App (e1, e2) -> (exp_to_concrete_string e1) ^ 
+                    " ( " ^ (exp_to_concrete_string e2) ^ " ) "
      
 (* exp_to_abstract_string exp -- Return a string representation of the
    abstract syntax of the expression `exp` *)
