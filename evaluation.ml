@@ -115,8 +115,18 @@ let eval_t (exp : expr) (_env : Env.env) : Env.value =
 
 (* The SUBSTITUTION MODEL evaluator -- to be completed *)
    
-let eval_s (_exp : expr) (_env : Env.env) : Env.value =
-  failwith "eval_s not implemented" ;;
+let rec eval_s (exp : expr) (_env : Env.env) : Env.value =
+  match exp with 
+  | Var v -> Env.Val Unassigned (* CHECK *)
+  | Num _ 
+  | Bool _ -> Env.Val exp
+  | Unop (u, e) -> (match (eval_s e (Env.empty())) with 
+                   | Val v -> Env.Val (Unop (u, v))
+                   | Closure _ ->  EvalError "No Closures")
+  | Binop (b, e1, e2) -> (match (eval_s e1 (Env.empty())), (eval_s e2 (Env.empty())) with 
+                         | Val v1, Val v2 -> Env.Val (Binop (b, v1, v2))
+                         | _, _ -> EvalError "No Closures")
+  |
      
 (* The DYNAMICALLY-SCOPED ENVIRONMENT MODEL evaluator -- to be
    completed *)
