@@ -80,17 +80,30 @@ module Env : ENV =
         (varname, loc) :: List.remove_assoc varname env
       with EvalError _ -> (varname, loc) :: env
 
-    let value_to_string ?(printenvp : bool = true) (v : value) : string =
-      failwith "value_to_string not implemented"
+    let rec value_to_string ?(printenvp : bool = true) (v : value) : string =
+      match v with 
+      | Val exp -> exp_to_concrete_string exp
+      | Closure (exp, env) -> exp_to_concrete_string exp ^ (if printenvp then env_to_string env else "")
 
-    let rec env_to_string (env : env) : string =
-      let rec helper (var, v: varid * value ref) = 
-        match !v with 
-        | Val exp -> print_string ("( " ^ var ^ ", " ^ exp_to_concrete_string exp ^ " )")
-        | Closure (exp, env) -> print_string ("( " ^ var ^ ", " ^ exp_to_concrete_string exp ^ " )" ^ env_to_string env)
-      in List.iter helper env 
+    and env_to_string (env : env) : string =
+      let env_string = "" in 
+      let rec helper (env: env) (str: string) : string =  
+        match env with 
+        | hd :: tl -> let var, v = hd in 
+                      (match !v with 
+                      | Val exp as all -> var ^ " -> " ^ value_to_string all 
+                      | Closure (exp, env) -> var ^ " -> " ^ "[" ^ helper env str ^ 
+                                              " ⊢ " ^ exp_to_concrete_string exp ^ "]") ^ 
+                                              (if tl = [] then "" else "; " ^ helper tl str) 
+        | [] -> ""  
+      in helper env env_string 
   end
 ;;
+
+(* let env1 = extend (empty()) "x" (ref (Val (Num (1))));;
+let sub2 = Fun("x", Binop(Plus, Var ("x"), Num (2)));;
+let env2 = extend (empty()) "f" (ref (Closure (sub2, env1)));;
+let env3 = extend env2 "y" (ref (Val (Num (5))));; *)
 
 
 (*......................................................................
@@ -239,7 +252,7 @@ let rec eval_s (_exp : expr) (_env : Env.env) : Env.value =
       | _, _ -> raise (EvalError "Issue with function application")
     end
   | Var (x) -> raise (EvalError ("Unbound Variable " ^ x))
-  | Raise | Unassigned -> raise (EvalError "Unrecognized Expression”)*)
+  | Raise | Unassigned -> raise (EvalError "Unrecognized Expression”) *)
      
 (* The DYNAMICALLY-SCOPED ENVIRONMENT MODEL evaluator -- to be
    completed *)
