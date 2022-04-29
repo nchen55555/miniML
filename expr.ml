@@ -100,15 +100,16 @@ let new_varname : unit -> string =
 (* subst var_name repl exp -- Return the expression `exp` with `repl`
    substituted for free occurrences of `var_name`, avoiding variable
    capture *)
+
 let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
   match exp with 
   | Var v -> if v = var_name then repl else exp 
   | Num _ -> exp
   | Bool _ -> exp 
   | Unop (u, e) -> Unop (u, subst var_name repl e)
-  | Binop (b, e1, e2) -> Binop (b, subst var_name repl e1, subst var_name repl e1)
+  | Binop (b, e1, e2) -> Binop (b, subst var_name repl e1, subst var_name repl e2)
   | Conditional (e1, e2, e3) -> Conditional ((subst var_name repl e1), (subst var_name repl e2), (subst var_name repl e3)) (* CHECK *)
-  | Fun (var, e) -> if var = var_name then exp 
+  | Fun (var, e) -> if var = var_name then exp
                     else if (SS.mem var (free_vars repl)) 
                     then let var_new = new_varname () in 
                     Fun (var_new, subst var (Var var_new) (subst var_new repl e)) (* fun z -> P [y ↦ z][x ↦ Q] *)
