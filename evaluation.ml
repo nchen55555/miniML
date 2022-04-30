@@ -134,79 +134,71 @@ let eval_t (exp : expr) (_env : Env.env) : Env.value =
   (* coerce the expr, unchanged, into a value *)
   Env.Val exp ;;
 
-(* The SUBSTITUTION MODEL evaluator -- to be completed *)
-   
-let eval_s (exp : expr) (_env : Env.env) : Env.value =
-  let rec eval_h (exp : expr): expr = 
+
+let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr = 
+  match exp with 
+  | Num _ | Bool _ -> exp
+  | Unop (u, e) -> (match eval_h e env eval_type with 
+                   | Num num -> Num(~-num)
+                   | _ -> raise (EvalError "Unop"))
+  | Binop (b, e1, e2) -> (match b, (eval_h e1 env eval_type), (eval_h e2 env eval_type) with  
+                         | Equals, Num p, Num q -> Bool (p = q)
+                         | Equals, Bool p, Bool q -> Bool (p = q)
+                         | LessThan, Num p, Num q -> Bool (p = q)
+                         | LessThan, Bool p, Bool q -> Bool (p < q)
+                         | Plus, Num p, Num q -> Num (p + q)
+                         | Minus, Num p, Num q -> Num (p - q)
+                         | Times, Num p, Num q -> Num (p * q)  
+                         | _ -> raise (EvalError "Binop"))                          
+  | Conditional (e1, e2, e3) -> (match eval_h e1 env eval_type with 
+                                | Bool cond -> if cond then eval_h e2 env eval_type else eval_h e3 env eval_type
+                                | _ -> raise (EvalError "Conditional"))
+  | Raise | Unassigned -> raise (EvalError "Unrecognized expression") (* CAN WE ASSUME A CLOSURE WILL NEVER BE RETURNED BACK *)
+  | _ -> if eval_type = 1 then match eval_s exp env with | Val v -> v | _ -> raise (EvalError "Non-closure")
+         else if eval_type = 2 then match eval_d exp env with | Val v -> v | _ -> raise (EvalError "Non-closure")
+         else if eval_type = 3 then match eval_l exp env with | Val v -> v | _ -> raise (EvalError "Non-closure")
+         else raise (EvalError "Wrong Helper")
+
+and eval_s (exp : expr) (_env : Env.env) : Env.value =
+  let rec eval_h_s (exp : expr): expr = 
   match exp with 
   | Var v -> raise (EvalError "Unbound Variable")
-  | Num _ | Bool _ -> exp
-  | Unop (u, e) -> (match eval_h e with 
-                   | Num num -> Num(~-num)
-                   | _ -> raise (EvalError "Unop"))
-  | Binop (b, e1, e2) -> (match b, (eval_h e1), (eval_h e2) with  
-                         | Equals, Num p, Num q -> Bool (p = q)
-                         | Equals, Bool p, Bool q -> Bool (p = q)
-                         | LessThan, Num p, Num q -> Bool (p = q)
-                         | LessThan, Bool p, Bool q -> Bool (p < q)
-                         | Plus, Num p, Num q -> Num (p + q)
-                         | Minus, Num p, Num q -> Num (p - q)
-                         | Times, Num p, Num q -> Num (p * q)  
-                         | _ -> raise (EvalError "Binop"))                          
-  | Conditional (e1, e2, e3) -> (match eval_h e1 with 
-                                | Bool cond -> if cond then eval_h e2 else eval_h e3
-                                | _ -> raise (EvalError "Conditional"))
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Raise | Unassigned -> eval_h exp (Env.empty()) 1
   | Fun (v, e) as exp -> exp
-  | Let (var, e1, e2) -> eval_h (subst var (eval_h e1) e2) 
-  | Letrec (var, e1, e2) -> eval_h (subst var (eval_h (subst var (Letrec (var, eval_h e1, Var var)) e2)) e2)
+  | Let (var, e1, e2) -> eval_h_s (subst var (eval_h_s e1) e2) 
+  | Letrec (var, e1, e2) -> eval_h_s (subst var (eval_h_s (subst var (Letrec (var, eval_h_s e1, Var var)) e2)) e2)
   (* eval_helper (subst v (eval_helper (subst v (Letrec (v, v_d, Var v)) b )) b ) *)
-  | Raise 
-  | Unassigned -> raise (EvalError "Unrecognized expression") 
-  | App (e1, e2) -> (match (eval_h e1), (eval_h e2) with
-                    | Fun (var, e), expr -> eval_h (subst var expr e) 
+  | App (e1, e2) -> (match (eval_h_s e1), (eval_h_s e2) with
+                    | Fun (var, e), expr -> eval_h_s (subst var expr e) 
                     | _ -> raise (EvalError "Function Application"))
-  in Env.Val (eval_h exp);; 
-
-(* The DYNAMICALLY-SCOPED ENVIRONMENT MODEL evaluator -- to be
-   completed *)
-   
-let rec eval_d (exp : expr) (env : Env.env) : Env.value =
-  let rec eval_h (exp : expr) (env: Env.env): expr = 
+  in Env.Val (eval_h_s exp)
+  
+  and eval_d (exp : expr) (env : Env.env) : Env.value = 
   match exp with 
-  | Var v -> (match Env.lookup env v with 
-             | Val e -> e 
-             | Closure _ -> raise (EvalError "Var"))
-  | Num _ | Bool _ -> exp
-  | Unop (u, e) -> (match eval_h e env with 
-                   | Num num -> Num(~-num)
-                   | _ -> raise (EvalError "Unop"))
-  | Binop (b, e1, e2) -> (match b, (eval_h e1 env), (eval_h e2 env) with  
-                         | Equals, Num p, Num q -> Bool (p = q)
-                         | Equals, Bool p, Bool q -> Bool (p = q)
-                         | LessThan, Num p, Num q -> Bool (p = q)
-                         | LessThan, Bool p, Bool q -> Bool (p < q)
-                         | Plus, Num p, Num q -> Num (p + q)
-                         | Minus, Num p, Num q -> Num (p - q)
-                         | Times, Num p, Num q -> Num (p * q)  
-                         | _ -> raise (EvalError "Binop"))                          
-  | Conditional (e1, e2, e3) -> (match eval_h e1 env with 
-                                | Bool cond -> if cond then eval_h e2 env else eval_h e3 env
-                                | _ -> raise (EvalError "Conditional"))
-  | Fun (v, e) as exp -> exp
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Raise | Unassigned -> Val (eval_h exp env 2)
+  | Var v -> Env.lookup env v
+  | Fun (v, e) as exp -> Val exp
   | Let (var, e1, e2)
-  | Letrec (var, e1, e2) -> eval_h e2 (Env.extend env var (ref (Env.Val(eval_h e1 env))))
-  | Raise 
-  | Unassigned -> raise (EvalError "Unrecognized expression") 
-  | App (e1, e2) -> (match (eval_h e1 env), (eval_h e2 env) with
-                    | Fun (var, e), expr -> eval_h e (Env.extend env var (ref (Env.Val expr))) 
+  | Letrec (var, e1, e2) -> eval_d e2 (Env.extend env var (ref (eval_d e1 env)))
+  | App (e1, e2) -> (match (eval_d e1 env), (eval_d e2 env) with
+                    | Val(Fun (var, e)), expr -> eval_d e (Env.extend env var (ref expr)) 
                     | _ -> raise (EvalError "Function Application"))
-  in Env.Val (eval_h exp env);; 
        
-(* The LEXICALLY-SCOPED ENVIRONMENT MODEL evaluator -- optionally
-   completed as (part of) your extension *)
-   
-let eval_l (_exp : expr) (_env : Env.env) : Env.value =
-  failwith "eval_l not implemented" ;;
+and eval_l (exp : expr) (env : Env.env) : Env.value =
+  match exp with 
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Raise | Unassigned -> Val (eval_h exp env 3)
+  | Var v -> Env.lookup env v
+  | Fun (v, e) as exp -> Env.close exp env (* double check - lack of closure *)
+  | Let (var, e1, e2) -> eval_l e2 (Env.extend env var (ref (eval_l e1 env))) 
+  | Letrec (var, e1, e2) -> let temp = ref (Env.Val(Unassigned)) in 
+                            let env_x = Env.extend env var temp
+                            in temp := (eval_l e1 env_x); eval_l e2 env_x (* DOESN'T WORK *) 
+  | App (e1, e2) -> (match (eval_l e1 env), (eval_l e2 env) with
+                    | Closure (exp, c_env), value_d -> (match exp with 
+                                                       | Fun (v, e) -> eval_l e (Env.extend c_env v (ref value_d))
+                                                       | _ -> raise (EvalError "Function Application"))
+                    | _ -> raise (EvalError "Function Application"))
+  ;; 
 
 (* The EXTENDED evaluator -- if you want, you can provide your
    extension as a separate evaluator, or if it is type- and
@@ -224,4 +216,4 @@ let eval_e _ =
    above, not the `evaluate` function, so it doesn't matter how it's
    set when you submit your solution.) *)
    
-let evaluate = eval_d ;;
+let evaluate = eval_l ;;
