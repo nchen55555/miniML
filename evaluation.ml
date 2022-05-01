@@ -208,13 +208,12 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
 let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr = 
   match exp with 
   | Num _ | Bool _ -> exp
-  | Unop (u, e) -> print_string ("UNOP" ^ Env.env_to_string env); (match u, eval_h e env eval_type, eval_type with 
+  | Unop (u, e) -> (match u, eval_h e env eval_type, eval_type with 
                    | Negate, Num num, _ -> Num(~-num)
                    | Deref, Unop(Ref, expr), 3 -> expr
                    | Ref, expr, 3 -> Unop(Ref, expr) (* double check *)
                    | _ -> print_string ("LAST" ^ exp_to_concrete_string (eval_h e env eval_type)); raise (EvalError "Unop")) (* check because I don't think it can evaluate anything unless dereferenced *)
   | Binop (b, e1, e2) -> (match b, (eval_h e1 env eval_type), (eval_h e2 env eval_type) with  
-                         (*| Assign, _, _ -> let env_sub = env_return e1 e2 env in Unit*)
                          | Equals, Num p, Num q -> Bool (p = q)
                          | Equals, Bool p, Bool q -> Bool (p = q)
                          | LessThan, Num p, Num q -> Bool (p = q)
@@ -262,44 +261,18 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
   | Unit -> raise (EvalError "Unit")
        
 and eval_l (exp : expr) (env : Env.env) : Env.value =
-  match exp with (*
-                         (*| Assign, Unop(Ref, Num p), Num q -> Unop(Ref, (Num q))
-                         | Assign, Unop(Ref, Bool p), Bool q -> Unop(Ref, (Bool q))
-                         | Seq, sub, expr -> print_string (exp_to_concrete_string (Binop (Seq, sub, expr))); expr (* Num or Bool here?? *)*)
-  | Binop (Seq, e1, e2) -> let temp = ref (eval_l e1 env) in 
-                           (match e2 with 
-                           | Var v -> print_string ("in here" ^ v); let env_x = env_return e1 e2 env
-                                                   in temp := eval_l e1 env_x; 
-                                                   print_string ("env: " ^ (Env.env_to_string env_x)); 
-                                                   eval_l e2 env_x (* assignment doesn't return anything *)
-                           | _ -> print_string "here instead"; eval_l e2 env)*)
-  (*| Binop (Assign, e1, e2)  -> let temp = ref (eval_l e1 env) in 
-                              (match e1 with 
-                              | Var v -> let env_x = Env.extend env v temp 
-                                        in temp := eval_l e2 env_x; print_string ("env: " ^ (Env.env_to_string env_x)); 
-                                        print_string (Env.value_to_string !temp); !temp (* double check here because it is technically supposed to return a unit *)
-                              | _ -> Val(Unit)) (* double check here *)*)
-                              
+  match exp with                          
   | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Raise | Unassigned -> Val (eval_h exp env 3)
   | Var v -> print_string ("getting v: " ^ v ^ " STOP" ^ (Env.env_to_string env)); Env.lookup env v
   | Fun (v, e) as exp -> Env.close exp env (* double check - lack of closure *)
-  | Let (var, e1, e2) -> (*print_string (exp_to_abstract_string exp);*) (*match e1 with 
-                         | Binop (Assign, p, q) as all-> let temp = ref (eval_l all env) in 
-                                                   let env_x = Env.extend env var temp  
-                                                   in temp := eval_l e2 env_x; Val(Unit) *)
-                         (*| Binop (Seq, p, q) -> let temp = ref (eval_l e1 env) in 
-                                                   let env_x = Env.extend env var temp 
-                                                   in temp := eval_l p env_x; print_string ("env: " ^ (Env.env_to_string env_x)); eval_l q env_x (* assignment doesn't return anything *)*)
-                         (match e1 with 
+  | Let (var, e1, e2) -> (match e1 with 
                          | Binop (Assign, p, q) -> let temp = ref (eval_l p env) in 
                                                     (match p with 
                                                     | Var v -> let env_x = Env.extend env v temp 
                                                               in temp := eval_l (Unop (Ref, q)) env_x; 
                                                               eval_l e2 (Env.extend env_x var (ref (Env.Val(Unit)))) 
-                                                    | _ -> Val(Unit)) (* double check here *)(*let env_sub = env_return p q env in 
-                         print_string("ULTIMATE " ^ Env.env_to_string env_sub ^ exp_to_concrete_string e2); eval_l e2 env_sub*)
-                         | _ -> let env_x = (Env.extend env var (ref (eval_l e1 env))) in 
-                         print_string ("HERE " ^ Env.env_to_string env_x) ; eval_l e2 env_x)
+                                                    | _ -> Val(Unit)) (* double check here *)
+                         | _ -> let env_x = (Env.extend env var (ref (eval_l e1 env))) in eval_l e2 env_x)
   | Letrec (var, e1, e2) -> let temp = ref (Env.Val(Unassigned)) in 
                             let env_x = Env.extend env var temp
                             in temp := (eval_l e1 env_x); eval_l e2 env_x (* WORKS! *) 
