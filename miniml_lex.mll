@@ -25,7 +25,8 @@
                        ("true", TRUE);
                        ("false", FALSE);
                        ("fun", FUNCTION);
-                       ("function", FUNCTION)
+                       ("function", FUNCTION);
+                       ("ref", REFERENCE)
                      ]
                      
   let sym_table = 
@@ -40,7 +41,9 @@
                        ("-", MINUS);
                        ("*", TIMES);
                        ("(", OPEN);
-                       (")", CLOSE)
+                       (")", CLOSE);
+                       (":=", ASSIGN);
+                       ("!", DEREFERENCE)
                      ]
 }
 

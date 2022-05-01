@@ -10,6 +10,8 @@
 (* Unary operators *)
 type unop =
   | Negate
+  | Deref
+  | Ref
 ;;
 
 (* Binary operators *)
@@ -19,6 +21,7 @@ type binop =
   | Times
   | Equals
   | LessThan
+  | Assign
 ;;
 
 (* Variable identifers *)
@@ -38,6 +41,7 @@ type expr =
   | Raise                                (* exceptions *)
   | Unassigned                           (* (temporarily) unassigned *)
   | App of expr * expr                   (* function applications *)
+  | Unit                                 (* nothing is returned *)
 ;;
     
 (*......................................................................

@@ -20,12 +20,15 @@
 %token <string> ID
 %token <int> INT 
 %token TRUE FALSE
+%token ASSIGN
+%token DEREFERENCE 
+%token REFERENCE
 
 %nonassoc IF
-%left LESSTHAN EQUALS
+%left LESSTHAN EQUALS ASSIGN
 %left PLUS MINUS
 %left TIMES
-%nonassoc NEG
+%nonassoc NEG DEREFERENCE REFERENCE
 
 %start input
 %type <Expr.expr> input
@@ -53,6 +56,9 @@ expnoapp: INT                   { Num $1 }
         | FUNCTION ID DOT exp   { Fun($2, $4) } 
         | RAISE                 { Raise }
         | OPEN exp CLOSE        { $2 }
+        | exp ASSIGN exp        { Binop(Assign, $1, $3) }
+        | DEREFERENCE exp       { Unop(Deref, $2) } 
+        | REFERENCE exp         { Unop(Ref, $2) }
 ;
 
 %%

@@ -7,8 +7,21 @@
   Abstract syntax of MiniML expressions 
  *)
 
+ (*
+ (":=", ASSIGN);
+ ("!", DEREFERENCE)
+ ("ref", REFERENCE)
+ 
+ | exp ASSIGN exp        { Binop(Assign, $1, $3) }
+        | DEREFERENCE exp       { Unop(Deref, $2) } 
+        | REFERENCE exp         { Unop(Ref, $2) }
+        
+%token ASSIGN *)
+
 type unop =
   | Negate
+  | Deref
+  | Ref
 ;;
     
 type binop =
@@ -17,6 +30,7 @@ type binop =
   | Times
   | Equals
   | LessThan
+  | Assign
 ;;
 
 type varid = string ;;
@@ -34,6 +48,7 @@ type expr =
   | Raise                                (* exceptions *)
   | Unassigned                           (* (temporarily) unassigned *)
   | App of expr * expr                   (* function applications *)
+  | Unit                                 (* nothing is returned *)
 ;;
   
 (*......................................................................
@@ -69,18 +84,20 @@ let rec free_vars (exp : expr) : varidset =
   | Binop (_, e1, e2) -> SS.union (free_vars e1) (free_vars e2) 
   | Conditional (e1, e2, e3) -> SS.union (free_vars e1) (SS.union (free_vars e2) (free_vars e3))
   | Fun (var, e) -> SS.remove var (free_vars e) 
-  | Let (var, e1, e2) 
-  | Letrec (var, e1, e2) -> SS.union (free_vars e1) (SS.remove var (free_vars e2))
-  | Raise 
-  | Unassigned -> SS.empty 
-  | App (e1, e2) -> SS.union (free_vars e1) (free_vars e2);;
+  | Let (var, e1, e2) -> SS.union (free_vars e1) (SS.remove var (free_vars e2))
+  | Letrec (var, e1, e2) -> SS.remove var (SS.union (free_vars e1) (free_vars e2))
+  | Raise | Unassigned | Unit -> SS.empty 
+  | App (e1, e2) -> SS.union (free_vars e1) (free_vars e2) ;;
+
+let test_free_vars () = 
+  let exp = Var "x" in 
+  let set = SS.empty in 
+  assert (free_vars exp = SS.add "x" set) ;;
   
 (* new_varname () -- Returns a freshly minted `varid` constructed with
    a running counter a la `gensym`. Assumes no variable names use the
    prefix "var". (Otherwise, they might accidentally be the same as a
    generated variable name.) *)
-
-(* DOUBLE CHECK - CHANGED TYPE FROM NEW_VARNAME () : string *)
 
 let new_varname : unit -> string =
   let counter = ref ~-1 in 
@@ -106,7 +123,7 @@ let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
   | Var v -> if v = var_name then repl else exp 
   | Num _ -> exp
   | Bool _ -> exp 
-  | Unop (u, e) -> Unop (u, subst var_name repl e)
+  | Unop (u, e) -> Unop (u, subst var_name repl e) (* make sure substitution sematnics aren't involved? *)
   | Binop (b, e1, e2) -> Binop (b, subst var_name repl e1, subst var_name repl e2)
   | Conditional (e1, e2, e3) -> Conditional ((subst var_name repl e1), (subst var_name repl e2), (subst var_name repl e3)) (* CHECK *)
   | Fun (var, e) -> if var = var_name then exp
@@ -114,15 +131,19 @@ let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
                     then let var_new = new_varname () in 
                     Fun (var_new, subst var (Var var_new) (subst var_new repl e)) (* fun z -> P [y ↦ z][x ↦ Q] *)
                     else Fun (var, subst var_name repl e) 
-  | Let (var, e1, e2)   
-  | Letrec (var, e1, e2) -> if var = var_name then Let(var, subst var_name repl e1, e2)
+  | Let (var, e1, e2) -> if var = var_name then Let(var, subst var_name repl e1, e2) (* return the expression??? *)
                         else if (SS.mem var (free_vars repl)) 
                         then let var_new = new_varname () in 
                         Let (var_new, subst var_name repl e1, subst var (Var var_new) (subst var_new repl e2)) (*  (let y = D in B) [x ↦ Q] = (let z = D [x ↦ Q] in B [y ↦ z] [x ↦ Q]) (if y is a FV in Q) *)
                         else Let (var, subst var_name repl e1, subst var_name repl e2) (* (let y = D in B) [x ↦ Q] = (let y = D [x ↦ Q] in B [x ↦ Q]) (if y is not a FV in Q) *)
-  | Raise 
-  | Unassigned -> exp
+  | Letrec (var, e1, e2) -> if var = var_name then Letrec(var, subst var_name repl e1, e2) (* return the expression??? *)
+                        else if (SS.mem var (free_vars repl)) 
+                        then let var_new = new_varname () in 
+                        Letrec (var_new, subst var_name repl e1, subst var (Var var_new) (subst var_new repl e2)) (*  (let y = D in B) [x ↦ Q] = (let z = D [x ↦ Q] in B [y ↦ z] [x ↦ Q]) (if y is a FV in Q) *)
+                        else Letrec (var, subst var_name repl e1, subst var_name repl e2) (* (let y = D in B) [x ↦ Q] = (let y = D [x ↦ Q] in B [x ↦ Q]) (if y is not a FV in Q) *)
+  | Raise | Unassigned |Unit -> exp
   | App (e1, e2) -> App (subst var_name repl e1, subst var_name repl e2) (*(Q R)[x ↦ P] = Q[x ↦ P] R[x ↦ P] *)
+
 (*......................................................................
   String representations of expressions
  *)
@@ -137,10 +158,13 @@ let binop_to_string_con (b: binop) =
   | Times -> " * "
   | Equals -> " = "
   | LessThan -> " < "
+  | Assign -> " := "
 
 let unop_to_string_con (u: unop) = 
   match u with 
   | Negate -> "-"
+  | Deref -> "!"
+  | Ref -> "ref "
 
 let rec exp_to_concrete_string (exp : expr) : string =
   match exp with 
@@ -163,7 +187,8 @@ let rec exp_to_concrete_string (exp : expr) : string =
   | Raise -> "parse error" 
   | Unassigned -> "Unassigned"                          
   | App (e1, e2) -> (exp_to_concrete_string e1) ^ 
-                    "(" ^ (exp_to_concrete_string e2) ^ ")" ;;
+                    "(" ^ (exp_to_concrete_string e2) ^ ")" 
+  | Unit -> "()"
 
 
 let binop_to_string_abs (b: binop) = 
@@ -173,10 +198,13 @@ let binop_to_string_abs (b: binop) =
   | Times -> "Times"
   | Equals -> "Equals"
   | LessThan -> "Less Than"
+  | Assign -> "Assign"
 
 let unop_to_string_abs (u: unop) = 
   match u with 
   | Negate -> "Negate"
+  | Deref -> "Deref"
+  | Ref -> "Ref"
      
 (* exp_to_abstract_string exp -- Return a string representation of the
    abstract syntax of the expression `exp` *)
@@ -201,7 +229,11 @@ let rec exp_to_abstract_string (exp : expr) : string =
   | Letrec (var, e1, e2) -> "Letrec(" ^ var ^ ", " ^ 
                         (exp_to_abstract_string e1) ^ 
                          ", " ^ (exp_to_abstract_string e2) ^ ")"
-  | Raise -> "parse error" 
+  | Raise -> "Raise" 
   | Unassigned -> "Unassigned"                          
   | App (e1, e2) -> "App(" ^ (exp_to_abstract_string e1) ^ 
-                    ", " ^ (exp_to_abstract_string e2) ^ ")" ;;
+                    ", " ^ (exp_to_abstract_string e2) ^ ")"
+  | Unit -> "Unit" ;;
+
+let run_tests () = 
+  test_free_vars ()
