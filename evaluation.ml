@@ -212,7 +212,7 @@ let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr =
                    | Negate, Num num, _ -> Num(~-num)
                    | Deref, Unop(Ref, expr), 3 -> expr
                    | Ref, expr, 3 -> Unop(Ref, expr) (* double check *)
-                   | _ -> print_string ("LAST" ^ exp_to_concrete_string (eval_h e env eval_type)); raise (EvalError "Unop")) (* check because I don't think it can evaluate anything unless dereferenced *)
+                   | _ -> raise (EvalError "Unop")) (* check because I don't think it can evaluate anything unless dereferenced *)
   | Binop (b, e1, e2) -> (match b, (eval_h e1 env eval_type), (eval_h e2 env eval_type) with  
                          | Equals, Num p, Num q -> Bool (p = q)
                          | Equals, Bool p, Bool q -> Bool (p = q)
