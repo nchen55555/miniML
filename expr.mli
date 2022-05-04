@@ -91,3 +91,5 @@ val exp_to_concrete_string : expr -> string ;;
    abstract syntax of the expression `exp` *)
 val exp_to_abstract_string : expr -> string ;;
 
+val run_tests: unit -> unit ;;
+
