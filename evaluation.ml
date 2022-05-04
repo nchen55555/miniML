@@ -199,7 +199,7 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
   | Let (var, e1, e2)
   | Letrec (var, e1, e2) -> eval_d e2 (Env.extend env var (ref (eval_d e1 env)))
   | App (e1, e2) -> (match (eval_d e1 env), (eval_d e2 env) with
-                    | Val(Fun (var, e)), expr -> eval_d e 
+                    | Env.Val(Fun (var, e)), expr -> eval_d e 
                                                  (Env.extend env var (ref expr)) 
                     | _ -> raise (EvalError "Function Application"))
        
@@ -218,7 +218,7 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                                 temp := eval_l (Unop (Ref, q)) env_x; 
                                 eval_l e2 (Env.extend env_x var 
                                           (ref (Env.Val(Unit)))) 
-                            | Env.Val (Unop (Ref, _)), _ -> Val(Unit) 
+                            | Env.Val (Unop (Ref, _)), _ -> Env.Val(Unit) 
                             | _ -> raise (EvalError "Binop"))
                          | _ -> eval_l e2 (Env.extend env var 
                                           (ref (eval_l e1 env)))) 
@@ -226,7 +226,7 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                             let env_x = Env.extend env var temp
                             in temp := (eval_l e1 env_x); eval_l e2 env_x 
   | App (e1, e2) -> (match (eval_l e1 env), (eval_l e2 env) with
-                    | Closure (exp, c_env), value_d -> 
+                    | Env.Closure (exp, c_env), value_d -> 
                         (match exp with 
                         | Fun (v, e) -> eval_l e (Env.extend c_env v (ref value_d))
                         | _ -> raise (EvalError "Function Application"))
@@ -332,7 +332,8 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
     assert (eval_l e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Num(51), Let("x", Num(124), Var("x"))) in 
     assert (eval_l e (Env.empty()) = Env.Val(Num(124)));
-    let e = Let("x", Num(2), Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), Let("x", Num(8), App(Var("f"), Var("x"))))) in 
+    let e = Let("x", Num(2), Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), 
+                              Let("x", Num(8), App(Var("f"), Var("x"))))) in 
     assert (eval_l e (Env.empty()) = Env.Val(Num(10)));
     let e = App(Fun("y", Binop(Plus, Var("y"), Var("y"))), Num(10)) in 
     assert (eval_l e (Env.empty()) = Env.Val(Num(20)));

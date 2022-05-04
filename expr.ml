@@ -37,7 +37,7 @@ type expr =
   | Raise                                (* exceptions *)
   | Unassigned                           (* (temporarily) unassigned *)
   | App of expr * expr                   (* function applications *)
-  | Unit                                 (* nothing is returned *)
+  | Unit                                  (* nothing is returned *)
 ;;
   
 (*......................................................................
@@ -70,10 +70,11 @@ let rec free_vars (exp : expr) : varidset =
   | Num _ | Bool _| Raise | Unassigned | Unit -> SS.empty 
   | Unop (_, e) -> free_vars e
   | Binop (_, e1, e2) | App (e1, e2)-> SS.union (free_vars e1) (free_vars e2) 
-  | Conditional (e1, e2, e3) -> SS.union (free_vars e1) (SS.union (free_vars e2) (free_vars e3))
+  | Conditional (e1, e2, e3) -> SS.union (free_vars e1) 
+                                         (SS.union (free_vars e2) (free_vars e3))
   | Fun (var, e) -> SS.remove var (free_vars e) 
   | Let (var, e1, e2) -> SS.union (free_vars e1) (SS.remove var (free_vars e2))
-  | Letrec (var, e1, e2) -> SS.remove var (SS.union (free_vars e1) (free_vars e2)) ;;
+  | Letrec (var, e1, e2) -> SS.remove var (SS.union (free_vars e1) (free_vars e2))
 
 let test_free_vars () = 
   let exp = Num(3) in 
@@ -81,19 +82,26 @@ let test_free_vars () =
   assert (free_vars exp = set); 
   let exp = Var("x") in 
   assert (free_vars exp = SS.add "x" set); 
-  let exp = Let("x", Num(3), Let("y", Var("x"), App(App(Var("f"), Var("x")), Var("y")))) in 
+  let exp = Let("x", Num(3), Let("y", Var("x"), 
+                                  App(App(Var("f"), Var("x")), Var("y")))) in 
   assert (free_vars exp = SS.add "f" SS.empty); 
-  let exp = Let("x", Var("x"), Let("y", Var("x"), App(App(Var("f"), Var("x")), Var("y")))) in 
+  let exp = Let("x", Var("x"), Let("y", Var("x"), 
+                                   App(App(Var("f"), Var("x")), Var("y")))) in 
   assert (free_vars exp = SS.add "f" (SS.add "x" SS.empty)); 
-  let exp = Let("x", Var("y"), Let("y", Var("x"), App(App(Var("f"), Var("x")), Var("y")))) in 
+  let exp = Let("x", Var("y"), Let("y", Var("x"), 
+                                  App(App(Var("f"), Var("x")), Var("y")))) in 
   assert (free_vars exp = SS.add "f" (SS.add "y" SS.empty)); 
   let exp = Let("x", Fun("y", Var("x")), Var("x")) in 
   assert (free_vars exp = SS.add "x" SS.empty); 
-  let exp = Let("f", Fun("x", Binop(Plus, Var("x"), Var("y"))), App(Var("f"), Var("x"))) in 
+  let exp = Let("f", Fun("x", Binop(Plus, Var("x"), Var("y"))), 
+                              App(Var("f"), Var("x"))) in 
   assert (free_vars exp = SS.add "x" (SS.add "y" SS.empty));
   let exp = App(Fun("x", Binop(Plus, Var("x"), Num(1))), Num(3)) in 
   assert (free_vars exp = SS.empty); 
-  let exp = Let("f", Fun("x", Fun("y", Conditional(Binop(LessThan, Var("x"), Var("y")), Var("y"), App(App(Var("f"), Var("y")), Var("x"))))), App(App(Var("f"), Num(0)), Num(1))) in 
+  let exp = Let("f", Fun("x", 
+                     Fun("y", Conditional(Binop(LessThan, Var("x"), Var("y")),
+                              Var("y"), App(App(Var("f"), Var("y")), Var("x"))))), 
+                                        App(App(Var("f"), Num(0)), Num(1))) in 
   assert (free_vars exp = SS.add "f" SS.empty); 
   let exp = App(Fun("x", Var("x")), Fun("y", Var("x"))) in 
   assert (free_vars exp = SS.add "x" SS.empty); 
@@ -130,30 +138,38 @@ let test_new_varname () =
    substituted for free occurrences of `var_name`, avoiding variable
    capture *)
 
-let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr = (* currying?? with helper *)
+let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr = 
   match exp with 
   | Var v -> if v = var_name then repl else exp 
-  | Num _ | Bool _ -> exp 
-  | Unop (u, e) -> Unop (u, subst var_name repl e) (* make sure substitution sematnics aren't involved? *)
+  | Num _ | Bool _| Raise | Unassigned | Unit -> exp 
+  | Unop (u, e) -> Unop (u, subst var_name repl e) 
   | Binop (b, e1, e2) -> Binop (b, subst var_name repl e1, subst var_name repl e2)
-  | Conditional (e1, e2, e3) -> Conditional ((subst var_name repl e1), (subst var_name repl e2), (subst var_name repl e3)) (* CHECK *)
+  | Conditional (e1, e2, e3) -> Conditional ((subst var_name repl e1), 
+                                            (subst var_name repl e2), 
+                                            (subst var_name repl e3)) 
   | Fun (var, e) -> if var = var_name then exp
                     else if (SS.mem var (free_vars repl)) 
                     then let var_new = new_varname () in 
-                    Fun (var_new, subst var (Var var_new) (subst var_new repl e)) (* fun z -> P [y ↦ z][x ↦ Q] *)
+                    Fun (var_new, subst var (Var var_new) 
+                        (subst var_new repl e)) 
                     else Fun (var, subst var_name repl e) 
-  | Let (var, e1, e2) -> if var = var_name then Let(var, subst var_name repl e1, e2) (* return the expression??? *)
+  | Let (var, e1, e2) -> if var = var_name 
+                        then Let(var, subst var_name repl e1, e2) 
                         else if (SS.mem var (free_vars repl)) 
                         then let var_new = new_varname () in 
-                        Let (var_new, subst var_name repl e1, subst var (Var var_new) (subst var_name repl e2)) (*  (let y = D in B) [x ↦ Q] = (let z = D [x ↦ Q] in B [y ↦ z] [x ↦ Q]) (if y is a FV in Q) *)
-                        else Let (var, subst var_name repl e1, subst var_name repl e2) (* (let y = D in B) [x ↦ Q] = (let y = D [x ↦ Q] in B [x ↦ Q]) (if y is not a FV in Q) *)
-  | Letrec (var, e1, e2) -> if var = var_name then Letrec(var, subst var_name repl e1, e2) (* return the expression??? *)
+                        Let (var_new, subst var_name repl e1, 
+                            subst var (Var var_new) (subst var_name repl e2)) 
+                        else Let (var, subst var_name repl e1, 
+                                  subst var_name repl e2) 
+  | Letrec (var, e1, e2) -> if var = var_name 
+                        then Letrec(var, subst var_name repl e1, e2) 
                         else if (SS.mem var (free_vars repl)) 
                         then let var_new = new_varname () in 
-                        Letrec (var_new, subst var_name repl e1, subst var (Var var_new) (subst var_new repl e2)) (*  (let y = D in B) [x ↦ Q] = (let z = D [x ↦ Q] in B [y ↦ z] [x ↦ Q]) (if y is a FV in Q) *)
-                        else Letrec (var, subst var_name repl e1, subst var_name repl e2) (* (let y = D in B) [x ↦ Q] = (let y = D [x ↦ Q] in B [x ↦ Q]) (if y is not a FV in Q) *)
-  | Raise | Unassigned | Unit -> exp
-  | App (e1, e2) -> App (subst var_name repl e1, subst var_name repl e2) (*(Q R)[x ↦ P] = Q[x ↦ P] R[x ↦ P] *)
+                        Letrec (var_new, subst var_name repl e1, 
+                                subst var (Var var_new) (subst var_new repl e2)) 
+                        else Letrec (var, subst var_name repl e1, 
+                                    subst var_name repl e2) 
+  | App (e1, e2) -> App (subst var_name repl e1, subst var_name repl e2) 
 
 
 let test_subst () = 
@@ -161,16 +177,25 @@ let test_subst () =
   assert (subst "x" (Num(42)) exp = Fun("y", Num(42)));
   let exp = Binop(Plus, Var("x"), Num(1)) in 
   assert (subst "x" (Num(50)) exp = Binop(Plus, Num(50), Num(1)));
-  let exp = Let("x", Binop(Times, Var("y"), Var("y")), Binop(Plus, Var("x"), Var("x"))) in 
-  assert (subst "x" (Num(3)) exp = Let("x", Binop(Times, Var("y"), Var("y")), Binop(Plus, Var("x"), Var("x"))));
-  let exp = Let("x", Binop(Times, Var("y"), Var("y")), Binop(Plus, Var("x"), Var("x"))) in 
-  assert (subst "y" (Num (3)) exp = Let("x", Binop(Times, Num(3), Num(3)), Binop(Plus, Var("x"), Var("x"))));
+  let exp = Let("x", Binop(Times, Var("y"), Var("y")), 
+                     Binop(Plus, Var("x"), Var("x"))) in 
+  assert (subst "x" (Num(3)) exp = 
+         Let("x", Binop(Times, Var("y"), Var("y")), 
+                  Binop(Plus, Var("x"), Var("x"))));
+  let exp = Let("x", Binop(Times, Var("y"), Var("y")), 
+                     Binop(Plus, Var("x"), Var("x"))) in 
+  assert (subst "y" (Num (3)) exp = 
+          Let("x", Binop(Times, Num(3), Num(3)), 
+              Binop(Plus, Var("x"), Var("x"))));
   let exp = App(Fun("y", Var("x")), Num(21)) in 
   assert (subst "x" (Num(42)) exp = App(Fun("y", Num(42)), Num(21)));
-  let exp = Let("x", Binop(Plus, Var("x"), Num(1)), Binop(Plus, Var("x"), Num(2))) in 
-  assert (subst "x" (Num(42)) exp = Let("x", Binop(Plus, Num(42), Num(1)), Binop(Plus, Var("x"), Num(2))));
+  let exp = Let("x", Binop(Plus, Var("x"), Num(1)), 
+            Binop(Plus, Var("x"), Num(2))) in 
+  assert (subst "x" (Num(42)) exp = 
+          Let("x", Binop(Plus, Num(42), Num(1)), Binop(Plus, Var("x"), Num(2))));
   let exp = Let("x", Num(5), App(Var("f"), Var("y"))) in 
-  assert (subst "y" (Binop(Plus, Var("x"), Num(1))) exp =  Let("var3", Num(5), App(Var("f"), Binop(Plus, Var("var3"), Num(1)))))
+  assert (subst "y" (Binop(Plus, Var("x"), Num(1))) exp =  
+          Let("var3", Num(5), App(Var("f"), Binop(Plus, Var("var3"), Num(1)))))
 (*......................................................................
   String representations of expressions
  *)
@@ -221,7 +246,7 @@ let rec exp_to_abstract_string (exp : expr) : string =
   | Unassigned -> "Unassigned"                          
   | App (e1, e2) -> "App(" ^ (exp_to_abstract_string e1) ^ 
                     ", " ^ (exp_to_abstract_string e2) ^ ")"
-  | Unit -> "Unit" ;;
+  | Unit -> "Unit" 
 
 
 let binop_to_string_con (b: binop) = 
@@ -261,7 +286,8 @@ let rec exp_to_concrete_string (exp : expr) : string =
   | Unassigned -> "Unassigned"                          
   | App (e1, e2) -> (exp_to_concrete_string e1) ^ 
                     "(" ^ (exp_to_concrete_string e2) ^ ")" 
-  | Unit -> "()" ;;
+  | Unit -> "()" 
+;;
 
 let run_tests () = 
   test_free_vars ();
