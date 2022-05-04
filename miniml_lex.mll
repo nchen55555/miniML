@@ -43,7 +43,7 @@
                        ("(", OPEN);
                        (")", CLOSE);
                        (":=", ASSIGN);
-                       ("!", DEREFERENCE)
+                       ("!", DEREFERENCE);
                      ]
 }
 
