@@ -1,0 +1,97 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+
+\title{Final Project CS51}
+\author{Nicole Chen }
+\date{May 2022}
+\def\code#1{\texttt{#1}}
+\setlength{\parindent}{1cm}
+
+\begin{document}
+\graphicspath{ {./images/} }
+
+\maketitle
+
+\section{Introduction}
+As part of this project, I implemented a couple of extensions. First, I added the lexical semantics environment to evaluate expressions. Second, I augmented the range of acceptable inputs to the parser and evaluator such that mutable state and imperative programming were now represented.
+
+\section{Lexical Environment}
+To begin, I modified the scope of environmental semantics to include not just dynamical but also lexical. This is showcased in the \code{evaluation.ml} file in the the \code{eval\_l} code. In the written code, I specifically used \code{and} statements to try to abstract the code as \code{eval\_s}, \code{eval\_d} and \code{eval\_l} have similar implementations for \code{Num}, \code{Bool}, \code{Unop}, \code{Binop}, \code{Conditional}, \code{Unit}, \code{Raise}, and \code{Unassigned}. However, where \code{eval\_l} mostly diverges is in function and function application. Rather than returning the function, in a lexical environment, evaluation should return a closure wrapping up the function in the current environment. This way, during function application, the right environment will be applied to the function. We see this in the match statement for functions, whereby rather than repeating code from the dynamic environment (\code{Val exp}), the lexical environment returns a closure from the \code{Env module} such that the match statement returns \code{Env.close exp env}. Of course, during function application then, rather than matching the evaluated function as a value (as the dynamic environment does), we match it for a closure and pattern match/evaluate within the closure's environment to get the correct expression. 
+
+Lastly, unlike dynamic environments which have the same implementation for \code{let} and \code{letrec}, the lexical environment must utilize the \code{Unassigned} expression to evaluate \code{letrec} statements, following the rule below in Figure 1.
+
+\begin{figure}
+\caption{from http://book.cs51.io/pdfs/abstraction-19-environments.pdf}
+\centering
+\includegraphics[scale=0.5]{letrec}
+\end{figure}
+
+Thus, translating such a rule in code, we write. 
+
+\code{
+\\ let temp = ref (Env.Val(Unassigned)) in 
+\\ let env\_x = Env.extend env var temp in 
+\\ temp := (eval\_l e1 env\_x); eval\_l e2 env\_x }
+
+
+The variable temp references an Unassigned value such that when we extend the environment to include temp, we can reassign it to $v_{D}$ which is the evaluated value of D (definition in the let statement) and thus output the evaluated value of B in the reassigned environment.
+
+\section{Mutable State}
+The next extension that I implemented involved references. Specifically, I implemented evaluation rules for the assignment operator \code{:=}, the reference operator \code{ref} and the dereference operator \code{!}. Note: I did not implement code for the sequence operator \code{;} as it was not specified in the suggested extensions. To develop these extensions, I first incorporated these symbols into the lexical analyzer, adding to the keyword and symbol table in the \code{miniml\_lex.mll} file code:
+\\
+\\ \code{("ref", REFERENCE)} 
+\\ \code{(":=", ASSIGN);
+\\("!", DEREFERENCE)} 
+\\
+
+ This code was added so that the parser would recognize these different operators when typed into the \code{repl}. This was accompanied by additions to the parser. Ultimately, I implemented the dereference and reference operators as instances of \code{unop} and the assignment operator as an instance of \code{binop}. 
+ 
+ Because mutable states can only be represented in the lexical environment, any attempt to utilize references in the dynamic environment semantics or substitution semantics results in an evaluation error. This is represented by the \code{eval\_h} code 
+ \\ \code{| Deref, Unop(Ref, expr), 3 -> expr
+ \\ | Ref, expr, 3 -> Unop(Ref, expr)}
+ \\ and 
+ \\ \code{| Assign, Unop(Ref, Num p), Num q, 3 -> Unit
+\\ | Assign, Unop(Ref, Bool p), Bool q, 3 -> Unit} \\
+
+whereby the 3 represents the evaluation type (1 being substitution semantics, 2 being semantics in the dynamic environment, and 3 being semantics in the lexical environment). Thus, only expressions that are being evaluated in the lexical environment can use mutable operators. 
+
+Within the \code{eval\_l} function, we see that there is one specific area that has changed: the matching of the \code{let} expression. As the extension in the textbook emphasized "Since the environment is already mutable, you can even implement this extension without implementing stores and modifying
+the type of the eval function," I decided to implement mutable types without changing the eval\_l typing and without adding stores. As such, the let construct needed to be changed. Note: I understand in the textbook that the let construct is never changed, but because the textbook utilizes stores, that is possible. In the instance that the sequence operator (;) is not used and the fact that stores also aren't, it is necessary to alter the \code{let} expression. 
+
+More specifically, the code goes that: \\
+\begin{verbatim}
+| Let (var, e1, e2) -> (match e1 with  
+    | Binop (Assign, p, q) -> let temp = ref (eval_l p env) in 
+    (match !temp, p with 
+        | Val(Unop(Ref, _)), Var v -> let env_x = Env.extend env v 
+                                    temp in temp := eval_l 
+                                    (Unop (Ref, q)) env_x; 
+                                    eval_l e2 (Env.extend env_x var 
+                                    (ref (Env.Val(Unit)))) 
+        | Val(Unop(Ref, _)), _ -> Val(Unit) 
+        | _ -> raise (EvalError "Binop"))
+    | _ -> eval_l e2 (Env.extend env var (ref (eval_l e1 env))))
+\end{verbatim}
+
+Walking through my logic here, for assignment, only when the expression on the left is a reference variable will the assignment actually store something in that variable. As such, we pattern match p with expression \code{Var v}, and then pattern match \code{temp}, which represents the evaluated value of p in an empty environment, to \code{Val(Unop(Ref, \_)}. This is to ensure that the assigned expression is first a reference and second a variable. If it is not a variable, the assignment returns a \code{Unit}. If it is not a reference, the assignment returns an error. 
+
+If p is both a reference and a variable, we extend the value of evaluated p (represented as \code{temp} in the code) into the environment \code{env\_x} and then evaluate q as a reference in that environment, extending \code{env\_x} to the newly evaluated reference value of q. Lastly, we utilize \code{env\_x} to evaluate the second expression within the \code{let} statement, but because the assignment operator returns a \code{Unit}, the extended environment matches the let variable \code{var} to a \code{Unit} value. The tricky part here was making sure that I didn't assign the let variable \code{var} to the reassigned value of the reference \code{Var v}. 
+
+The main reason why I implemented the assignment match case in the \code{let} match case was because since there is no sequence operator (;), the only way assignment can be utilized and tested is through let statements such that 
+
+\begin{verbatim}
+let y = ref 3 in let z = (y := 5) in !y;;
+\end{verbatim}
+
+which evaluates to \code{Num(5)}. If we were to return z instead such that 
+
+\begin{verbatim}
+let y = ref 3 in let z = (y := 5) in z;;
+\end{verbatim}
+
+we would get \code{Unit}. 
+Note: the \code{Unit} expression is only really applicable to references in my implementation. I did not add any extensions towards function application with Units.
+
+\end{document}
