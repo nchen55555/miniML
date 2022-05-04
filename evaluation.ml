@@ -159,17 +159,17 @@ let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr =
   | Raise | Unassigned -> raise (EvalError "Unrecognized expression") 
   | Unit -> exp
   | _ -> if eval_type = 1 then 
-          match eval_s exp env with 
-          | Val v -> v 
-          | _ -> raise (EvalError "Non-closure")
+          (match eval_s exp env with 
+          | Env.Val v -> v 
+          | _ -> raise (EvalError "Non-closure"))
          else if eval_type = 2 then 
-          match eval_d exp env with 
-          | Val v -> v 
-          | _ -> raise (EvalError "Non-closure")
+          (match eval_d exp env with 
+          | Env.Val v -> v 
+          | _ -> raise (EvalError "Non-closure"))
          else if eval_type = 3 then 
-          match eval_l exp env with 
-          | Val v -> v 
-          | _ -> raise (EvalError "Non-closure")
+          (match eval_l exp env with 
+          | Env.Val v -> v 
+          | _ -> raise (EvalError "Non-closure"))
          else raise (EvalError "Input correct evaluation")
 
 and eval_s (exp : expr) (_env : Env.env) : Env.value =
@@ -193,9 +193,9 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
   and eval_d (exp : expr) (env : Env.env) : Env.value = 
   match exp with 
   | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ 
-  | Raise | Unassigned | Unit -> Val (eval_h exp env 2)
+  | Raise | Unassigned | Unit -> Env.Val (eval_h exp env 2)
   | Var v -> Env.lookup env v
-  | Fun (_, _) as exp -> Val exp
+  | Fun (_, _) as exp -> Env.Val exp
   | Let (var, e1, e2)
   | Letrec (var, e1, e2) -> eval_d e2 (Env.extend env var (ref (eval_d e1 env)))
   | App (e1, e2) -> (match (eval_d e1 env), (eval_d e2 env) with
@@ -206,19 +206,19 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
 and eval_l (exp : expr) (env : Env.env) : Env.value =
   match exp with 
   | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ 
-  | Raise | Unassigned | Unit -> Val (eval_h exp env 3)
+  | Raise | Unassigned | Unit -> Env.Val (eval_h exp env 3)
   | Var v -> Env.lookup env v
   | Fun (_, _) as exp -> Env.close exp env 
   | Let (var, e1, e2) -> (match e1 with 
                          | Binop (Assign, p, q) -> 
                             let temp = ref (eval_l p env) in 
                             (match !temp, p with 
-                            | Val(Unop(Ref, _)), Var v -> 
+                            | Env.Val (Unop (Ref, _)), Var v -> 
                                 let env_x = Env.extend env v temp in 
                                 temp := eval_l (Unop (Ref, q)) env_x; 
                                 eval_l e2 (Env.extend env_x var 
                                           (ref (Env.Val(Unit)))) 
-                            | Val(Unop(Ref, _)), _ -> Val(Unit) 
+                            | Env.Val (Unop (Ref, _)), _ -> Val(Unit) 
                             | _ -> raise (EvalError "Binop"))
                          | _ -> eval_l e2 (Env.extend env var 
                                           (ref (eval_l e1 env)))) 
@@ -237,46 +237,46 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
     let e = Let("x", Num(1), 
                      Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), 
                               Let("x", Num(2), App(Var("f"), Num(3))))) in
-    assert (eval_s e (Env.empty()) = Val(Num(4)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(4)));
     let e = App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                          Binop(Minus, Num(8), Num(2))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(36)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Binop(Plus, Num(3), Num(5)), 
                      App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                                   Binop(Minus, Var("x"), Num(2)))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(36)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Binop(Times, Num(2), Num(25)), 
                      Binop(Plus, Var("x"), Num(1))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(51)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(51)));
     let e = Let("x", Binop(Plus, Num(3), Num(5)), 
                      App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                                   Binop(Minus, Var("x"), Num(2)))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(36)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Num(51), Let("x", Num(124), Var("x"))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(124)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(124)));
     let e = Let("x", Num(2), Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), 
                                       Let("x", Num(8), 
                                                App(Var("f"), Var("x"))))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(10)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(10)));
     let e = App(Fun("y", Binop(Plus, Var("y"), Var("y"))), Num(10)) in 
-    assert (eval_s e (Env.empty()) = Val(Num(20)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(20)));
     let e = Let("f", Fun("y", Binop(Plus, Var("y"), Var("y"))), 
                      App(Var("f"), Num(10))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(20)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(20)));
     let e = Unit in 
-    assert (eval_s e (Env.empty()) = Val(Unit));
+    assert (eval_s e (Env.empty()) = Env.Val(Unit));
     let e = Letrec("f", Fun("n", 
                         Conditional(Binop(LessThan, Var("n"), Num(0)), Num(1), 
                                    Binop(Plus, Num(3), App(Var("f"), 
                                    Binop(Minus, Var("n"), Num(1)))))), 
                                                 App(Var("f"), Num(4))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(16)));
+    assert (eval_s e (Env.empty()) = Env.Val(Num(16)));
     let e = Letrec("f", Fun("n", 
                         Conditional(Binop(Equals, Var("n"), Num(0)), Num(1), 
                                    Binop(Times, Var("n"), App(Var("f"), 
                                    Binop(Minus, Var("n"), Num(1)))))), 
                         App(Var("f"), Num(12))) in 
-    assert (eval_s e (Env.empty()) = Val(Num(479001600)));;
+    assert (eval_s e (Env.empty()) = Env.Val(Num(479001600)));;
     (*let e = Let("x", Unop(Ref, Num(3)), Unop(Deref, Var("x"))) in 
     assert (eval_s e (Env.empty()) = raise (EvalError "Unop")) ;;*)
   
@@ -284,20 +284,20 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
     let e = Let("x", Binop(Plus, Num(3), Num(5)), 
                      App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                                   Binop(Minus, Var("x"), Num(2)))) in 
-    assert (eval_d e (Env.empty()) = Val(Num(36)));
+    assert (eval_d e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Num(51), Let("x", Num(124), Var("x"))) in 
-    assert (eval_d e (Env.empty()) = Val(Num(124)));
+    assert (eval_d e (Env.empty()) = Env.Val(Num(124)));
     let e = Let("x", Num(2), Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), 
                                       Let("x", Num(8), 
                                           App(Var("f"), Var("x"))))) in 
-    assert (eval_d e (Env.empty()) = Val(Num(16)));
+    assert (eval_d e (Env.empty()) = Env.Val(Num(16)));
     let e = Letrec("f", Fun("n", 
                         Conditional(Binop(LessThan, Var("n"), Num(0)), Num(1), 
                                     Binop(Plus, Num(3), App(Var("f"), 
                                                         Binop(Minus, Var("n"), 
                                                                      Num(1)))))), 
                         App(Var("f"), Num(4))) in 
-    assert (eval_d e (Env.empty()) = Val(Num(16)));
+    assert (eval_d e (Env.empty()) = Env.Val(Num(16)));
     let e = Letrec("f", Fun("n", 
                         Conditional(Binop(Equals, Var("n"), Num(0)), 
                                     Num(1), 
@@ -305,9 +305,9 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                                                            Binop(Minus, Var("n"), 
                                                                         Num(1)))))), 
                         App(Var("f"), Num(12))) in 
-    assert (eval_d e (Env.empty()) = Val(Num(479001600)));
+    assert (eval_d e (Env.empty()) = Env.Val(Num(479001600)));
     let e = Unit in 
-    assert (eval_d e (Env.empty()) = Val(Unit));;
+    assert (eval_d e (Env.empty()) = Env.Val(Unit));;
     (*let e = Let("x", Unop(Ref, Num(3)), Unop(Deref, Var("x"))) in 
     assert (eval_s e (Env.empty()) = raise (EvalError "Unop")) ;;*)
   
@@ -315,73 +315,73 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
     let e = Let("x", Num(1), 
                      Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), 
                                   Let("x", Num(2), App(Var("f"), Num(3))))) in
-    assert (eval_l e (Env.empty()) = Val(Num(4)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(4)));
     let e = App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                 Binop(Minus, Num(8), Num(2))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(36)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Binop(Plus, Num(3), Num(5)), 
                 App(Fun("x", Binop(Times, Var("x"),
                     Var("x"))), Binop(Minus, Var("x"), Num(2)))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(36)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Binop(Times, Num(2), Num(25)), 
                      Binop(Plus, Var("x"), Num(1))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(51)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(51)));
     let e = Let("x", Binop(Plus, Num(3), Num(5)), 
                      App(Fun("x", Binop(Times, Var("x"), Var("x"))), 
                          Binop(Minus, Var("x"), Num(2)))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(36)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(36)));
     let e = Let("x", Num(51), Let("x", Num(124), Var("x"))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(124)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(124)));
     let e = Let("x", Num(2), Let("f", Fun("y", Binop(Plus, Var("x"), Var("y"))), Let("x", Num(8), App(Var("f"), Var("x"))))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(10)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(10)));
     let e = App(Fun("y", Binop(Plus, Var("y"), Var("y"))), Num(10)) in 
-    assert (eval_l e (Env.empty()) = Val(Num(20)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(20)));
     let e = Let("f", Fun("y", Binop(Plus, Var("y"), Var("y"))), App(Var("f"), Num(10))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(20)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(20)));
     let e = Unit in 
-    assert (eval_l e (Env.empty()) = Val(Unit));
+    assert (eval_l e (Env.empty()) = Env.Val(Unit));
     let e = Let("x", Unop(Ref, Num(3)), Unop(Deref, Var("x"))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(3))); 
+    assert (eval_l e (Env.empty()) = Env.Val(Num(3))); 
     let e = Let("x", Unop(Ref, Num(42)), 
                 Let("y", Binop(Assign, Var("x"), 
                               Binop(Minus, Unop(Deref, Var("x")), Num(21))), 
                     Binop(Plus, Unop(Deref, Var("x")), Unop(Deref, Var("x"))))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(42))); 
+    assert (eval_l e (Env.empty()) = Env.Val(Num(42))); 
     let e = Let("x", Unop(Ref, Unop(Ref, Num(3))), 
                 Let("y", Unop(Deref, Var("x")), 
                    Let("z", Binop(Assign, Var("y"), 
                       Binop(Plus, Unop(Deref, Unop(Deref, Var("x"))), 
                             Unop(Deref, Var("y")))), Unop(Deref, Var("y"))))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(6))); 
+    assert (eval_l e (Env.empty()) = Env.Val(Num(6))); 
     let e = Let("x", Unop(Ref, Num(3)), 
                 Let("y", Binop(Assign, Var("x"), Num(3)), Var("y"))) in 
-    assert (eval_l e (Env.empty()) = Val(Unit));
+    assert (eval_l e (Env.empty()) = Env.Val(Unit));
     let e = Letrec("f", Fun("n", 
                   Conditional(Binop(Equals, Var("n"), Num(0)), 
                               Num(1), 
                               Binop(Times, Var("n"), App(Var("f"), 
                                                      Binop(Minus, Var("n"), Num(1)))))), 
                                                      App(Var("f"), Num(5))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(120)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(120)));
     let e = Letrec("f", Fun("n", 
                   Conditional(Binop(LessThan, Var("n"), Num(0)), 
                               Num(1), Binop(Plus, Num(3), App(Var("f"), 
                                       Binop(Minus, Var("n"), Num(1)))))), 
                                       App(Var("f"), Num(4))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(16)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(16)));
     let e = Letrec("f", Fun("n", 
                         Conditional(Binop(LessThan, Unop(Deref, Var("n")), Num(0)), 
                                    Num(1), Binop(Plus, Num(3), App(Var("f"), 
                                            Unop(Ref, Binop(Minus, Unop(Deref, Var("n")), 
                                            Num(1))))))), App(Var("f"), 
                                            Unop(Ref, Num(4)))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(16)));
+    assert (eval_l e (Env.empty()) = Env.Val(Num(16)));
     let e = Letrec("f", Fun("n", 
             Conditional(Binop(Equals, Unop(Deref, Var("n")), Num(0)), 
                         Num(1), Let("y", Binop(Assign, Var("n"), 
                         Binop(Minus, Unop(Deref, Var("n")), Num(1))), App(Var("f"), 
                         Var("n"))))), App(Var("f"), Unop(Ref, Num(5)))) in 
-    assert (eval_l e (Env.empty()) = Val(Num(1)));;
+    assert (eval_l e (Env.empty()) = Env.Val(Num(1)));;
 
     
   let run_tests () = 
