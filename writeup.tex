@@ -15,7 +15,7 @@
 \maketitle
 
 \section{Introduction}
-As part of this project, I implemented a couple of extensions. First, I added the lexical semantics environment to evaluate expressions. Second, I augmented the range of acceptable inputs to the parser and evaluator such that mutable state and imperative programming were now represented.
+As part of this project, I implemented a couple of extensions. First, I added the lexical semantics environment to evaluate expressions. Second, I augmented the range of acceptable inputs to the parser and evaluator such that mutable state and imperative programming were now represented. Lastly, I included floats in the acceptable inputs to the parser as well as division.
 
 \section{Lexical Environment}
 To begin, I modified the scope of environmental semantics to include not just dynamical but also lexical. This is showcased in the \code{evaluation.ml} file in the the \code{eval\_l} code. In the written code, I specifically used \code{and} statements to try to abstract the code as \code{eval\_s}, \code{eval\_d} and \code{eval\_l} have similar implementations for \code{Num}, \code{Bool}, \code{Unop}, \code{Binop}, \code{Conditional}, \code{Unit}, \code{Raise}, and \code{Unassigned}. However, where \code{eval\_l} mostly diverges is in function and function application. Rather than returning the function, in a lexical environment, evaluation should return a closure wrapping up the function in the current environment. This way, during function application, the right environment will be applied to the function. We see this in the match statement for functions, whereby rather than repeating code from the dynamic environment (\code{Val exp}), the lexical environment returns a closure from the \code{Env module} such that the match statement returns \code{Env.close exp env}. Of course, during function application then, rather than matching the evaluated function as a value (as the dynamic environment does), we match it for a closure and pattern match/evaluate within the closure's environment to get the correct expression. 
@@ -36,29 +36,32 @@ Thus, translating such a rule in code, we write.
 \\ temp := (eval\_l e1 env\_x); eval\_l e2 env\_x }
 
 
-The variable temp references an Unassigned value such that when we extend the environment to include temp, we can reassign it to $v_{D}$ which is the evaluated value of D (definition in the let statement) and thus output the evaluated value of B in the reassigned environment.
+The variable temp references an Unassigned value such that when we extend the environment to include temp, we can reassign it to $v_{D}$ which is the evaluated value of D (definition in the let statement). $v_{D}$  is represented as \code{(eval\_l e1 env\_x)}. Next, we output the evaluated value of B in the reassigned environment through the statement \code{eval\_l e2 env\_x }.
 
 \section{Mutable State}
-The next extension that I implemented involved references. Specifically, I implemented evaluation rules for the assignment operator \code{:=}, the reference operator \code{ref} and the dereference operator \code{!}. Note: I did not implement code for the sequence operator \code{;} as it was not specified in the suggested extensions. To develop these extensions, I first incorporated these symbols into the lexical analyzer, adding to the keyword and symbol table in the \code{miniml\_lex.mll} file code:
+The next extension that I implemented involved references. Specifically, I implemented evaluation rules for the assignment operator \code{:=}, the reference operator \code{ref}, and the dereference operator \code{!}. Note: I did not implement code for the sequence operator \code{;} as it was not specified in the suggested extensions. To develop these extensions, I first incorporated these symbols into the lexical analyzer, adding to the keyword and symbol table in the \code{miniml\_lex.mll} file code:
 \\
 \\ \code{("ref", REFERENCE)} 
 \\ \code{(":=", ASSIGN);
 \\("!", DEREFERENCE)} 
 \\
 
- This code was added so that the parser would recognize these different operators when typed into the \code{repl}. This was accompanied by additions to the parser. Ultimately, I implemented the dereference and reference operators as instances of \code{unop} and the assignment operator as an instance of \code{binop}. 
+ This code was added so that the lexical analyzer would recognize these different operators when typed into the \code{repl}. This was accompanied by additions to the parser. Ultimately, I implemented the dereference and reference operators as instances of \code{unop} and the assignment operator as an instance of \code{binop} for assignment priority reasons as well as to simplify the code. 
  
  Because mutable states can only be represented in the lexical environment, any attempt to utilize references in the dynamic environment semantics or substitution semantics results in an evaluation error. This is represented by the \code{eval\_h} code 
- \\ \code{| Deref, Unop(Ref, expr), 3 -> expr
- \\ | Ref, expr, 3 -> Unop(Ref, expr)}
- \\ and 
- \\ \code{| Assign, Unop(Ref, Num p), Num q, 3 -> Unit
-\\ | Assign, Unop(Ref, Bool p), Bool q, 3 -> Unit} \\
+ \begin{verbatim}
+ 
+ | Deref, Unop(Ref, expr), 3 -> expr
+ | Ref, expr, 3 -> Unop(Ref, expr)
+ 
+  
+ | Assign, Unop(Ref, Num p), Num q, 3 -> Unit
+ | Assign, Unop(Ref, Bool p), Bool q, 3 -> Unit 
 
+\end{verbatim}
 whereby the 3 represents the evaluation type (1 being substitution semantics, 2 being semantics in the dynamic environment, and 3 being semantics in the lexical environment). Thus, only expressions that are being evaluated in the lexical environment can use mutable operators. 
 
-Within the \code{eval\_l} function, we see that there is one specific area that has changed: the matching of the \code{let} expression. As the extension in the textbook emphasized "Since the environment is already mutable, you can even implement this extension without implementing stores and modifying
-the type of the eval function," I decided to implement mutable types without changing the eval\_l typing and without adding stores. As such, the let construct needed to be changed. Note: I understand in the textbook that the let construct is never changed, but because the textbook utilizes stores, that is possible. In the instance that the sequence operator (;) is not used and the fact that stores also aren't, it is necessary to alter the \code{let} expression. 
+Within the \code{eval\_l} function, we see that there is one specific area that has changed: the matching of the \code{let} expression. As the extension in the textbook emphasized "Since the environment is already mutable, you can even implement this extension without implementing stores and modifying the type of the eval function," I decided to implement mutable types without changing the eval\_l typing and without adding stores. As such, the let construct needed to be changed. Note: I understand in the textbook that the let construct is never changed, but because the textbook utilizes stores, that is possible. In the instance that the sequence operator (;) is not used and the fact that stores also aren't, it is necessary to alter the \code{let} expression. 
 
 More specifically, the code goes that: \\
 \begin{verbatim}
@@ -93,5 +96,62 @@ let y = ref 3 in let z = (y := 5) in z;;
 
 we would get \code{Unit}. 
 Note: the \code{Unit} expression is only really applicable to references in my implementation. I did not add any extensions towards function application with Units.
+
+\section{Floats and Division}
+For my last extension, I implemented Floats and Divisions. Similar to how we implemented integers within the lexical analyzer and parser, I added floats to the lexical analyzer through utilizing ocaml's \code{float\_of\_string} function as shown below and adding the respective token and precedence to the parser whereby \code{TIMES} and \code{DIVIDE} had the same precedence.
+
+\begin{verbatim}
+Lexical Analyzer: 
+
+| digit+"."digit+ as ifloat
+        { let float = float_of_string ifloat in
+          FLOAT float
+        }
+
+Parser:
+
+%token <float> FLOAT
+
+%left TIMES DIVIDE
+
+| FLOAT                 { Float $1 }
+\end{verbatim}
+
+It must be noted though that to increase readability and simplicity of the code, rather than adding different float operators such as \code{PLUSDOT} and \code{TIMESDOT} (represented as +. and *.), floats can be computed with integer operators such (+, -, *, /) and negated with integer operators such as ~- . As such, in the evaluation functions (specifically in \code{eval\_h} because all evaluations have the same implementation for floats), the binary and unary operators remain the same for floats and nums (integers); however, each must be matched to the same type, as shown below: 
+
+
+\begin{verbatim}
+| Unop (u, e) -> (match u, eval\_h e env eval\_type, eval\_type with 
+                   | Negate, Num num, \_ -> Num(~-num)
+                   | Negate, Float f, \_ -> Float (~-.f)
+                   | Deref, Unop(Ref, expr), 3 -> expr
+                   | Ref, expr, 3 -> Unop(Ref, expr) 
+                   | \_ -> raise (EvalError "Unop"))
+
+  | Binop (b, e1, e2) -> (match b, (eval\_h e1 env eval\_type), 
+                                   (eval\_h e2 env eval\_type), eval\_type with  
+                         | Equals, Num p, Num q, \_ -> Bool (p = q)
+                         | Equals, Bool p, Bool q, \_ -> Bool (p = q)
+                         | LessThan, Num p, Num q, \_ -> Bool (p < q)
+                         | LessThan, Bool p, Bool q, \_ -> Bool (p < q)
+                         | Plus, Num p, Num q, \_ -> Num (p + q)
+                         | Plus, Float p, Float q, \_ -> Float (p +. q)
+                         | Minus, Num p, Num q, \_ -> Num (p - q)
+                         | Minus, Float p, Float q, \_ -> Float (p -. q)
+                         | Times, Num p, Num q, \_ -> Num (p * q) 
+                         | Times, Float p, Float q, \_ -> Float (p *. q)
+                         | Divide, Num p, Num q, \_ -> Num (p / q)
+                         | Divide, Float p, Float q, \_ -> Float (p /. q)
+                         | Assign, Unop(Ref, Float \_), Float \_, 3 -> Unit
+                         | Assign, Unop(Ref, Num \_), Num \_, 3 -> Unit
+                         | Assign, Unop(Ref, Bool \_), Bool \_, 3 -> Unit
+                         | \_ -> raise (EvalError "Binop"))   
+\end{verbatim}
+
+It also must be noted that because of the way I specified in the parser and lexical analyzer, \code{12.} is not a valid substitute for \code{12.0}. Lastly, I implemented the divide operator for both floats and nums (integers). Adding the divide operator simply involved adding to the lexical analyzer and parser to recognize the divide symbol and then augmenting the evaluation function (in the \code{eval\_h} function) so that division between two nums and two floats gave \code{p / q} or \code{p /.q}. 
+
+\section{Conclusion}
+
+All in all, this project was extremely fun and I really enjoyed the exploratory aspect of it!
 
 \end{document}

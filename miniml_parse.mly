@@ -23,11 +23,13 @@
 %token ASSIGN
 %token DEREFERENCE 
 %token REFERENCE
+%token DIVIDE
+%token <float> FLOAT
 
 %nonassoc IF
 %left LESSTHAN EQUALS ASSIGN
 %left PLUS MINUS
-%left TIMES
+%left TIMES DIVIDE
 %nonassoc NEG DEREFERENCE REFERENCE
 
 %start input
@@ -59,6 +61,8 @@ expnoapp: INT                   { Num $1 }
         | exp ASSIGN exp        { Binop(Assign, $1, $3) }
         | DEREFERENCE exp       { Unop(Deref, $2) } 
         | REFERENCE exp         { Unop(Ref, $2) }
+        | exp DIVIDE exp        { Binop(Divide, $1, $3) }
+        | FLOAT                 { Float $1 }
 ;
 
 %%

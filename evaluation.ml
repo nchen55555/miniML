@@ -132,9 +132,10 @@ module Env : ENV =
 
 let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr = 
   match exp with 
-  | Num _ | Bool _ -> exp
+  | Num _ | Bool _ | Float _ -> exp
   | Unop (u, e) -> (match u, eval_h e env eval_type, eval_type with 
                    | Negate, Num num, _ -> Num(~-num)
+                   | Negate, Float f, _ -> Float (~-.f)
                    | Deref, Unop(Ref, expr), 3 -> expr
                    | Ref, expr, 3 -> Unop(Ref, expr) 
                    | _ -> raise (EvalError "Unop"))
@@ -146,8 +147,14 @@ let rec eval_h (exp: expr) (env: Env.env) (eval_type: int): expr =
                          | LessThan, Num p, Num q, _ -> Bool (p < q)
                          | LessThan, Bool p, Bool q, _ -> Bool (p < q)
                          | Plus, Num p, Num q, _ -> Num (p + q)
+                         | Plus, Float p, Float q, _ -> Float (p +. q)
                          | Minus, Num p, Num q, _ -> Num (p - q)
-                         | Times, Num p, Num q, _ -> Num (p * q)  
+                         | Minus, Float p, Float q, _ -> Float (p -. q)
+                         | Times, Num p, Num q, _ -> Num (p * q) 
+                         | Times, Float p, Float q, _ -> Float (p *. q)
+                         | Divide, Num p, Num q, _ -> Num (p / q)
+                         | Divide, Float p, Float q, _ -> Float (p /. q)
+                         | Assign, Unop(Ref, Float _), Float _, 3 -> Unit
                          | Assign, Unop(Ref, Num _), Num _, 3 -> Unit
                          | Assign, Unop(Ref, Bool _), Bool _, 3 -> Unit
                          | _ -> raise (EvalError "Binop"))                          
@@ -176,7 +183,7 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
   let rec eval_h_s (exp : expr): expr = 
   match exp with 
   | Var _ -> raise (EvalError "Unbound Variable")
-  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ 
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Float _ 
   | Raise | Unassigned | Unit -> eval_h exp (Env.empty()) 1
   | Fun _ -> exp
   | Let (var, e1, e2) -> eval_h_s (subst var (eval_h_s e1) e2) 
@@ -192,7 +199,7 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
   
   and eval_d (exp : expr) (env : Env.env) : Env.value = 
   match exp with 
-  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ 
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Float _
   | Raise | Unassigned | Unit -> Env.Val (eval_h exp env 2)
   | Var v -> Env.lookup env v
   | Fun (_, _) as exp -> Env.Val exp
@@ -205,7 +212,7 @@ and eval_s (exp : expr) (_env : Env.env) : Env.value =
        
 and eval_l (exp : expr) (env : Env.env) : Env.value =
   match exp with 
-  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ 
+  | Num _ | Bool _ | Unop _ | Binop _ | Conditional _ | Float _
   | Raise | Unassigned | Unit -> Env.Val (eval_h exp env 3)
   | Var v -> Env.lookup env v
   | Fun (_, _) as exp -> Env.close exp env 
@@ -276,7 +283,12 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                                    Binop(Times, Var("n"), App(Var("f"), 
                                    Binop(Minus, Var("n"), Num(1)))))), 
                         App(Var("f"), Num(12))) in 
-    assert (eval_s e (Env.empty()) = Env.Val(Num(479001600)));;
+    assert (eval_s e (Env.empty()) = Env.Val(Num(479001600)));
+    let e = Let("x", Num(5), Binop(Divide, Var("x"), Num(2))) in 
+    assert (eval_s e (Env.empty()) = Env.Val(Num(2)));
+    let e = Let("x", Float(9.), Binop(Plus, Binop(Times, Float(2.), Var("x")), 
+                                     Float(10.))) in 
+    assert (eval_s e (Env.empty()) = Env.Val(Float(28.)));;
     (*let e = Let("x", Unop(Ref, Num(3)), Unop(Deref, Var("x"))) in 
     assert (eval_s e (Env.empty()) = raise (EvalError "Unop")) ;;*)
   
@@ -307,7 +319,12 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                         App(Var("f"), Num(12))) in 
     assert (eval_d e (Env.empty()) = Env.Val(Num(479001600)));
     let e = Unit in 
-    assert (eval_d e (Env.empty()) = Env.Val(Unit));;
+    assert (eval_d e (Env.empty()) = Env.Val(Unit));
+    let e = Let("x", Num(9), Binop(Plus, Num(4), Binop(Divide, Var("x"), Num(3)))) in 
+    assert (eval_d e (Env.empty()) = Env.Val(Num(7)));
+    let e = App(Fun("n", Binop(Minus, Float(9.), 
+                Binop(Times, Var("n"), Float(15.)))), Float(12.)) in
+    assert (eval_d e (Env.empty()) = Env.Val(Float(~-.171.)));;
     (*let e = Let("x", Unop(Ref, Num(3)), Unop(Deref, Var("x"))) in 
     assert (eval_s e (Env.empty()) = raise (EvalError "Unop")) ;;*)
   
@@ -337,7 +354,8 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
     assert (eval_l e (Env.empty()) = Env.Val(Num(10)));
     let e = App(Fun("y", Binop(Plus, Var("y"), Var("y"))), Num(10)) in 
     assert (eval_l e (Env.empty()) = Env.Val(Num(20)));
-    let e = Let("f", Fun("y", Binop(Plus, Var("y"), Var("y"))), App(Var("f"), Num(10))) in 
+    let e = Let("f", Fun("y", Binop(Plus, Var("y"), Var("y"))), 
+                App(Var("f"), Num(10))) in 
     assert (eval_l e (Env.empty()) = Env.Val(Num(20)));
     let e = Unit in 
     assert (eval_l e (Env.empty()) = Env.Val(Unit));
@@ -382,7 +400,14 @@ and eval_l (exp : expr) (env : Env.env) : Env.value =
                         Num(1), Let("y", Binop(Assign, Var("n"), 
                         Binop(Minus, Unop(Deref, Var("n")), Num(1))), App(Var("f"), 
                         Var("n"))))), App(Var("f"), Unop(Ref, Num(5)))) in 
-    assert (eval_l e (Env.empty()) = Env.Val(Num(1)));;
+    assert (eval_l e (Env.empty()) = Env.Val(Num(1)));
+    let e = Let("x", Num(7), Binop(Divide, Binop(Times, Num(4), Var("x")), Num(3))) in 
+    assert (eval_l e (Env.empty()) = Env.Val(Num(9)));
+    let e = Let("x", Unop(Ref, Float(7.)), 
+                Let("y", Binop(Assign, Var("x"), 
+                    Binop(Plus, Unop(Deref, Var("x")), Float(16.))), 
+                                Unop(Deref, Var("x")))) in 
+    assert (eval_l e (Env.empty()) = Env.Val(Float(23.)));;
 
     
   let run_tests () = 
@@ -407,4 +432,4 @@ let eval_e _ =
    above, not the `evaluate` function, so it doesn't matter how it's
    set when you submit your solution.) *)
    
-let evaluate = eval_l ;;
+let evaluate = eval_t ;;

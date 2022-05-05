@@ -44,6 +44,7 @@
                        (")", CLOSE);
                        (":=", ASSIGN);
                        ("!", DEREFERENCE);
+                       ("/", DIVIDE)
                      ]
 }
 
@@ -56,6 +57,10 @@ rule token = parse
   | digit+ as inum
         { let num = int_of_string inum in
           INT num
+        }
+  | digit+"."digit+ as ifloat
+        { let float = float_of_string ifloat in
+          FLOAT float
         }
   | id as word
         { try

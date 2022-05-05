@@ -20,6 +20,7 @@ type binop =
   | Equals
   | LessThan
   | Assign
+  | Divide 
 ;;
 
 type varid = string ;;
@@ -27,6 +28,7 @@ type varid = string ;;
 type expr =
   | Var of varid                         (* variables *)
   | Num of int                           (* integers *)
+  | Float of float                       (* float *)
   | Bool of bool                         (* booleans *)
   | Unop of unop * expr                  (* unary operators *)
   | Binop of binop * expr * expr         (* binary operators *)
@@ -67,7 +69,7 @@ let vars_of_list : string list -> varidset =
 let rec free_vars (exp : expr) : varidset =
   match exp with 
   | Var v -> SS.singleton v 
-  | Num _ | Bool _| Raise | Unassigned | Unit -> SS.empty 
+  | Num _ | Bool _| Raise | Unassigned | Unit | Float _ -> SS.empty 
   | Unop (_, e) -> free_vars e
   | Binop (_, e1, e2) | App (e1, e2)-> SS.union (free_vars e1) (free_vars e2) 
   | Conditional (e1, e2, e3) -> SS.union (free_vars e1) 
@@ -139,38 +141,33 @@ let test_new_varname () =
    capture *)
 
 let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr = 
+  let sub_helper = subst var_name repl in 
   match exp with 
   | Var v -> if v = var_name then repl else exp 
-  | Num _ | Bool _| Raise | Unassigned | Unit -> exp 
-  | Unop (u, e) -> Unop (u, subst var_name repl e) 
-  | Binop (b, e1, e2) -> Binop (b, subst var_name repl e1, subst var_name repl e2)
-  | Conditional (e1, e2, e3) -> Conditional ((subst var_name repl e1), 
-                                            (subst var_name repl e2), 
-                                            (subst var_name repl e3)) 
-  | Fun (var, e) -> if var = var_name then exp
-                    else if (SS.mem var (free_vars repl)) 
-                    then let var_new = new_varname () in 
-                    Fun (var_new, subst var (Var var_new) 
-                        (subst var_new repl e)) 
-                    else Fun (var, subst var_name repl e) 
-  | Let (var, e1, e2) -> if var = var_name 
-                        then Let(var, subst var_name repl e1, e2) 
-                        else if (SS.mem var (free_vars repl)) 
-                        then let var_new = new_varname () in 
-                        Let (var_new, subst var_name repl e1, 
-                            subst var (Var var_new) (subst var_name repl e2)) 
-                        else Let (var, subst var_name repl e1, 
-                                  subst var_name repl e2) 
-  | Letrec (var, e1, e2) -> if var = var_name 
-                        then Letrec(var, subst var_name repl e1, e2) 
-                        else if (SS.mem var (free_vars repl)) 
-                        then let var_new = new_varname () in 
-                        Letrec (var_new, subst var_name repl e1, 
-                                subst var (Var var_new) (subst var_new repl e2)) 
-                        else Letrec (var, subst var_name repl e1, 
-                                    subst var_name repl e2) 
-  | App (e1, e2) -> App (subst var_name repl e1, subst var_name repl e2) 
-
+  | Num _ | Bool _ | Unit | Raise | Unassigned | Float _ -> exp 
+  | Unop (u, e) -> Unop (u, sub_helper e) 
+  | Binop (b, e1, e2) -> Binop (b, sub_helper e1, sub_helper e2)
+  | Conditional (e1, e2, e3) -> Conditional (sub_helper e1, 
+                                            sub_helper e2, 
+                                            sub_helper e3) 
+  | Fun (v, e) as exp -> if v = var_name then exp 
+                         else if not (SS.mem v (free_vars repl)) 
+                         then Fun (v, sub_helper e)
+                         else let var_new = new_varname () in 
+                         Fun (var_new, sub_helper (subst v (Var var_new) e))
+  | Let (v, e1, e2) -> if v = var_name then Let(v, sub_helper e1, e2)
+                       else if not(SS.mem v (free_vars repl)) 
+                       then Let (v, sub_helper e1, sub_helper e2)
+                       else let var_new = new_varname () in 
+                      Let (var_new, sub_helper e1, 
+                          sub_helper (subst v (Var var_new) e2))
+  | Letrec (v, e1, e2) -> if v = var_name then Let(v, sub_helper e1, e2)
+                       else if not(SS.mem v (free_vars repl)) 
+                       then Letrec (v, sub_helper e1, sub_helper e2)
+                       else let var_new = new_varname () in 
+                      Letrec (var_new, sub_helper (subst v (Var var_new) e1), 
+                             sub_helper (subst v (Var var_new) e2))
+  | App (e1, e2) -> App (sub_helper e1, sub_helper e2)
 
 let test_subst () = 
   let exp = Fun("y", Var("x")) in 
@@ -195,7 +192,7 @@ let test_subst () =
           Let("x", Binop(Plus, Num(42), Num(1)), Binop(Plus, Var("x"), Num(2))));
   let exp = Let("x", Num(5), App(Var("f"), Var("y"))) in 
   assert (subst "y" (Binop(Plus, Var("x"), Num(1))) exp =  
-          Let("var3", Num(5), App(Var("f"), Binop(Plus, Var("var3"), Num(1)))))
+          Let("var3", Num(5), App(Var("f"), Binop(Plus, Var("x"), Num(1)))))
 (*......................................................................
   String representations of expressions
  *)
@@ -212,6 +209,7 @@ let binop_to_string_abs (b: binop) =
   | Equals -> "Equals"
   | LessThan -> "LessThan"
   | Assign -> "Assign"
+  | Divide -> "Divide"
 
 let unop_to_string_abs (u: unop) = 
   match u with 
@@ -225,7 +223,8 @@ let unop_to_string_abs (u: unop) =
 let rec exp_to_abstract_string (exp : expr) : string =
   match exp with 
   | Var v -> "Var(" ^ v ^ ")"                      
-  | Num num -> "Num(" ^ string_of_int num ^")"                         
+  | Num num -> "Num(" ^ string_of_int num ^")"  
+  | Float f -> "Float(" ^ string_of_float f ^")"                       
   | Bool b -> Bool.to_string b                       
   | Unop (u, e) -> "Unop(" ^ unop_to_string_abs u ^ ", " ^ 
                     exp_to_abstract_string e ^ ")"                 
@@ -257,6 +256,7 @@ let binop_to_string_con (b: binop) =
   | Equals -> " = "
   | LessThan -> " < "
   | Assign -> " := "
+  | Divide -> " \ "
 
 let unop_to_string_con (u: unop) = 
   match u with 
@@ -267,7 +267,8 @@ let unop_to_string_con (u: unop) =
 let rec exp_to_concrete_string (exp : expr) : string =
   match exp with 
   | Var v -> v                      
-  | Num num -> string_of_int num                         
+  | Num num -> string_of_int num  
+  | Float f -> string_of_float f                       
   | Bool b -> Bool.to_string b                       
   | Unop (u, e) -> unop_to_string_con u ^ exp_to_concrete_string e   
   | Binop (b, e1, e2) -> exp_to_concrete_string e1 ^ binop_to_string_con b ^
