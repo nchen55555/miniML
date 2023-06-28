@@ -24,9 +24,19 @@ environment does), we match it for a closure and pattern match/evaluate within
 the closure’s environment to get the correct expression.
 Lastly, unlike dynamic environments which have the same implementa-
 tion for let and letrec, the lexical environment must utilize the Unassigned
-expression to evaluate letrec statements, following the rule below in Figure 1.
-Thus, translating such a rule in code, we write
+expression to evaluate letrec statements. 
 
-let temp = ref (Env.Val(Unassigned)) in
-let env x = Env.extend env var temp in
-temp := (eval l e1 env x); eval l e2 env x
+## Mutable State 
+
+The next extension that I implemented involved references. Specifically, I imple-
+mented evaluation rules for the assignment operator :=, the reference operator
+ref, and the dereference operator !. Note: I did not implement code for the
+sequence operator ; as it was not specified in the suggested extensions. To
+develop these extensions, I first incorporated these symbols into the lexical an-
+alyzer, adding to the keyword and symbol table in the miniml lex.mll file code. 
+
+("ref", REFERENCE) <br />
+(":=", ASSIGN); <br />
+("!", DEREFERENCE) <br />
+
+
