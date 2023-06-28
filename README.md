@@ -21,7 +21,7 @@ ical environment returns a closure from the Env module such that the match
 statement returns Env.close exp env. Of course, during function application
 then, rather than matching the evaluated function as a value (as the dynamic
 environment does), we match it for a closure and pattern match/evaluate within
-the closure’s environment to get the correct expression.
+the closure’s environment to get the correct expression. <br />
 Lastly, unlike dynamic environments which have the same implementa-
 tion for let and letrec, the lexical environment must utilize the Unassigned
 expression to evaluate letrec statements. 
@@ -38,5 +38,23 @@ alyzer, adding to the keyword and symbol table in the miniml lex.mll file code.
 ("ref", REFERENCE) <br />
 (":=", ASSIGN); <br />
 ("!", DEREFERENCE) <br />
+
+This code was added so that the lexical analyzer would recognize these
+different operators when typed into the repl. This was accompanied by ad-
+ditions to the parser. Ultimately, I implemented the dereference and reference
+operators as instances of unop and the assignment operator as an instance of
+binop for assignment priority reasons as well as to simplify the code. <br />
+
+Because mutable states can only be represented in the lexical environ-
+ment, any attempt to utilize references in the dynamic environment semantics
+or substitution semantics results in an evaluation error. <br />
+
+## Floats and Division 
+
+For my last extension, I implemented Floats and Divisions. Similar to how we
+implemented integers within the lexical analyzer and parser, I added floats to the
+lexical analyzer through utilizing ocaml’s float of string function as shown
+below and adding the respective token and precedence to the parser whereby
+TIMES and DIVIDE had the same precedence. <br />
 
 
